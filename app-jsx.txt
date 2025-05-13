@@ -1,0 +1,307 @@
+import { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import ReactMarkdown from "react-markdown";
+
+function App() {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [displayedAnswer, setDisplayedAnswer] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [useTypingEffect, setUseTypingEffect] = useState(true);
+  const [history, setHistory] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const typingTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    document.body.classList.toggle("dark-mode", darkMode);
+  }, [darkMode]);
+
+  useEffect(() => {
+    const el = document.getElementById("response-box");
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [displayedAnswer]);
+
+  useEffect(() => {
+    const savedHistory = localStorage.getItem("chatHistory");
+    if (savedHistory) {
+      setHistory(JSON.parse(savedHistory));
+    }
+  }, []);
+  
+  useEffect(() => {
+    localStorage.setItem("chatHistory", JSON.stringify(history));
+  }, [history]);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("darkMode");
+    if (savedTheme !== null) {
+      setDarkMode(JSON.parse(savedTheme));
+    }
+  }, []);
+  
+  useEffect(() => {
+    localStorage.setItem("darkMode", JSON.stringify(darkMode));
+  }, [darkMode]);
+  
+
+  useEffect(() => {
+    if (!useTypingEffect && answer) {
+      setDisplayedAnswer(answer);
+      clearTimeout(typingTimeoutRef.current);
+    }
+  }, [useTypingEffect, answer]);
+
+  const handleVoiceInput = () => {
+    const recognition =
+      new window.webkitSpeechRecognition() || new window.SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.start();
+
+    recognition.onresult = (event) => {
+      setQuestion(event.results[0][0].transcript);
+    };
+  };
+
+  async function generateAnswer() {
+    if (!question.trim()) return;
+    setLoading(true);
+    setAnswer("");
+    setDisplayedAnswer("");
+    clearTimeout(typingTimeoutRef.current);
+
+    try {
+      const response = await axios({
+        url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyB2V-oRkeNmyVHgl_H6AQMvorzKRVrZn_k",
+        method: "post",
+        data: {
+          contents: [
+            {
+              parts: [{ text: question }],
+            },
+          ],
+        },
+      });
+
+      const result = response.data.candidates[0].content.parts[0].text;
+      setAnswer(result);
+
+      setHistory((prev) => [...prev, { question, answer: result }]);
+
+      if (useTypingEffect) {
+        animateTyping(result);
+      } else {
+        setDisplayedAnswer(result);
+      }
+    } catch (error) {
+      const errorMsg = "Oops! Something went wrong.";
+      setAnswer(errorMsg);
+      setDisplayedAnswer(errorMsg);
+    }
+
+    setLoading(false);
+  }
+
+  const animateTyping = (text) => {
+    let i = 0;
+    const speed = 2;
+    setDisplayedAnswer("");
+
+    const type = () => {
+      if (!useTypingEffect) {
+        setDisplayedAnswer(text);
+        return;
+      }
+
+      if (i < text.length) {
+        setDisplayedAnswer((prev) => prev + text.charAt(i));
+        i++;
+        typingTimeoutRef.current = setTimeout(type, speed);
+      }
+    };
+
+    type();
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(answer);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      generateAnswer();
+    }
+  };
+
+  const handleNewChat = () => {
+    setQuestion("");
+    setAnswer("");
+    setDisplayedAnswer("");
+  };
+
+  const restoreChat = (item) => {
+    setQuestion(item.question);
+    setAnswer(item.answer);
+    setDisplayedAnswer(useTypingEffect ? "" : item.answer);
+    if (useTypingEffect) animateTyping(item.answer);
+  };
+
+  return (
+    <div className={`flex h-screen w-screen ${darkMode ? "dark-mode" : ""}`}>
+      {/* Sidebar */}
+      {sidebarOpen && (
+        <div
+          className={`w-64 p-4 transition-all duration-300 
+      ${darkMode ? "bg-[#1f2937] text-white border-r border-gray-700" : "bg-white text-black border-r border-gray-200"} 
+      shadow-md relative`}
+        >
+          {/* Top-right Close Button */}
+          <div className="flex justify-end">
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="text-white text-xl hover:text-gray-300 transition"
+              title="Close Sidebar"
+            >
+              X
+            </button>
+          </div>
+
+          {/* Sidebar Content */}
+          <h2 className="text-lg font-semibold mb-4">💬 Your Chats</h2>
+
+          <button
+            onClick={handleNewChat}
+            className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-lg shadow hover:shadow-lg transition-all font-semibold mb-4"
+          >
+            ➕ New Chat
+          </button>
+
+          <ul className="space-y-2 overflow-y-auto max-h-[calc(100vh-180px)] pr-1">
+            {history.map((item, index) => (
+              <li
+                key={index}
+                onClick={() => restoreChat(item)}
+                className="cursor-pointer bg-gray-100 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-600 text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg transition"
+              >
+                {item.question.slice(0, 40)}...
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="flex-1 p-6 overflow-y-auto space-y-6 dark-card">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="text-2xl font-bold text-blue-500 dark:text-blue-300 focus:outline-none"
+              >
+                ☰
+              </button>
+            )}
+            <h1 className="text-3xl font-extrabold text-center dark-heading">
+              💬 AskVerse AI
+            </h1>
+          </div>
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="ml-4 px-3 py-2 rounded-lg dark-toggle text-sm font-medium"
+          >
+            {darkMode ? "☀️ Light" : "🌙 Dark"}
+          </button>
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-4">
+          <textarea
+            className="flex-1 p-4 border-2 border-blue-300 rounded-lg resize-none min-h-[120px] focus:outline-none focus:ring-4 focus:ring-blue-200 dark-input"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask me anything..."
+          ></textarea>
+          <button
+            onClick={generateAnswer}
+            className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-lg shadow-md hover:shadow-lg transition-all font-semibold"
+          >
+            Ask AI
+          </button>
+          <button
+            onClick={handleVoiceInput}
+            className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-lg shadow-md hover:shadow-lg transition-all font-semibold dark-mic"
+          >
+            🎤 Speak
+          </button>
+        </div>
+
+        <div className="flex items-center space-x-2 text-sm">
+          <input
+            type="checkbox"
+            checked={useTypingEffect}
+            onChange={(e) => setUseTypingEffect(e.target.checked)}
+            id="typingToggle"
+          />
+          <label htmlFor="typingToggle" className="text-gray-700 dark:text-gray-300">
+            Typing effect
+          </label>
+        </div>
+
+        <div className="relative w-full p-4 rounded-xl shadow-inner dark-answer border-2 border-gray-300 dark:border-gray-600">
+          {loading ? (
+            <p className="text-center text-gray-500">Generating response...</p>
+          ) : answer ? (
+            <>
+              <button
+                onClick={handleCopy}
+                className="absolute top-2 right-2 text-sm text-blue-600 hover:underline bg-white bg-opacity-70 px-2 py-1 rounded dark:bg-gray-800 dark:text-blue-400"
+              >
+                📋 Copy
+              </button>
+              {copied && (
+                <span className="absolute top-2 right-20 text-green-600 text-sm font-medium animate-pulse">
+                  ✅ Copied!
+                </span>
+              )}
+
+              <div className="mb-4 flex gap-2 items-start">
+                <span className="text-blue-600">👤</span>
+                <div className="bg-blue-100 text-gray-900 p-3 rounded-xl w-full dark-bubble">
+                  {question}
+                </div>
+              </div>
+
+              <div className="flex gap-2 items-start">
+                <span className="text-green-600">🤖</span>
+                <div
+                  className="p-4 bg-green-50 text-gray-900 rounded-xl border-2 w-full max-h-[400px] overflow-y-auto shadow-md animate-fade-in prose"
+                  style={{
+                    backgroundColor: darkMode ? "#1e1e2e" : "#f0fdf4",
+                    color: darkMode ? "#f3f4f6" : "#111827",
+                    borderColor: darkMode ? "#4ade80" : "#86efac",
+                    boxShadow: darkMode
+                      ? "0 0 10px rgba(74, 222, 128, 0.3)"
+                      : "0 0 6px rgba(74, 222, 128, 0.2)",
+                  }}
+                >
+                  <ReactMarkdown>{displayedAnswer}</ReactMarkdown>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-400 text-center">
+              Your answer will appear here...
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
