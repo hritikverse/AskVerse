@@ -22,7 +22,11 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
   const [showPinned, setShowPinned] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(() => {
+  const stored = localStorage.getItem("sidebarOpen");
+  return stored === "true"; // default is false if not found
+ });
   const typingTimeoutRef = useRef(null);
   const [showImagePromptBox, setShowImagePromptBox] = useState(false);
   const [imagePrompt, setImagePrompt] = useState("");
@@ -43,6 +47,11 @@ function App() {
 
 
   // Persist settings
+
+useEffect(() => {
+  localStorage.setItem("sidebarOpen", showSidebar.toString());
+}, [showSidebar]);
+  
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(history));
   }, [history]);
